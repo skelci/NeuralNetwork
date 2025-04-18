@@ -10,6 +10,7 @@ class LayerType(IntEnum):
     ELU = 3
     Tanh = 4
     BinaryStep = 5
+    Raw = 6
 
 
 
@@ -25,7 +26,8 @@ class Layer:
             LayerType.LeakyReLU:    lambda x, alpha=0.01: np.where(x > 0, x, alpha * x),
             LayerType.ELU:          lambda x, alpha=1.0: np.where(x > 0, x, alpha * (np.exp(x) - 1)),
             LayerType.Tanh:         lambda x: np.tanh(x),
-            LayerType.BinaryStep:   lambda x: np.where(x >= 0, 1, 0)
+            LayerType.BinaryStep:   lambda x: np.where(x >= 0, 1, 0),
+            LayerType.Raw:          lambda x: x
         }[type]
 
         self.activation_derivative = {
@@ -34,7 +36,8 @@ class Layer:
             LayerType.LeakyReLU:    lambda x, alpha=0.01: np.where(x > 0, 1, alpha),
             LayerType.ELU:          lambda x, alpha=1.0: np.where(x > 0, 1, alpha * np.exp(x)),
             LayerType.Tanh:         lambda x: 1 - np.square(x),
-            LayerType.BinaryStep:   lambda x: np.zeros_like(x)
+            LayerType.BinaryStep:   lambda x: np.zeros_like(x),
+            LayerType.Raw:          lambda x: np.ones_like(x)
         }[type]
 
 
@@ -42,7 +45,7 @@ class Layer:
         self.input_size = input_size
 
         if weights is None:
-            self.weights = np.random.normal(loc=0, scale=np.sqrt(1/self.size), size=(self.size, input_size))
+            self.weights = np.random.normal(loc=0, scale=np.sqrt(1/self.input_size), size=(self.size, input_size))
         else:
             if weights.shape != (self.size, input_size):
                 raise ValueError(f"Invalid weights shape: {weights.shape}, expected: {(self.size, input_size)}")
