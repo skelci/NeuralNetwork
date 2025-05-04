@@ -4,12 +4,12 @@ from core.network import *
 
 def train(nn, epochs, learning_step=0.01):
     for epoch in range(epochs):
-        if epoch % 10 == 0:
+        if epoch % 100 == 0:
             print(f"\rEpoch {epoch}", end="")
         data = []
-        for i in range(-100, 100):
+        for i in range(-10, 10):
             x = np.array([i * 0.1], dtype=np.float16)
-            y = (x - 3) * 3 + 5
+            y = (x + 4) * 4 + 4
             data.append((x, y))
         nn.back_prop(data, learning_step=learning_step)
 
@@ -25,6 +25,8 @@ def main():
 
     while True:
         cmd = input("> ")
+        if not cmd:
+            continue
         
         match cmd[0]:
             case "q":
@@ -32,8 +34,8 @@ def main():
 
             case "c":
                 nn.create(1, [
-                    Layer(1, LayerType.Linear),
-                    Layer(1, LayerType.Linear),
+                    Layer(LayerType.Linear, 1000),
+                    Layer(LayerType.Linear, 1),
                 ])
 
             case "t":

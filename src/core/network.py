@@ -12,11 +12,16 @@ class Network:
             os.makedirs(parent)
 
         with open(path, "wb") as f:
-            f.write(len(self.layers).to_bytes(1))
-            f.write(np.array([self.input_size] + [layer.size for layer in self.layers], dtype=np.int32).tobytes())
-            f.write(np.array([layer.type for layer in self.layers], dtype=np.int8).tobytes())
-            f.write(np.array([layer.alpha if layer.alpha else 0 for layer in self.layers], dtype=np.float16).tobytes())
+            f.write(np.uint8(len(self.layers)).tobytes())
+            f.write(np.uint16(self.input_size).tobytes())
             for layer in self.layers:
+                if layer.alpha is None:
+                    alpha = -1
+                else:
+                    alpha = layer.alpha
+                f.write(np.uint16(layer.size).tobytes())
+                f.write(np.float16(alpha).tobytes())
+                f.write(np.uint8(layer.type).tobytes())
                 f.write(layer.weights.tobytes())
                 f.write(layer.biases.tobytes())
 
@@ -35,26 +40,25 @@ class Network:
             raise FileNotFoundError(f"File not found: {path}")
         
         with open(path, "rb") as f:
-            num_layers = int.from_bytes(f.read(1))
-            sizes = np.frombuffer(f.read(4 * (num_layers + 1)), dtype=np.int32)
-            types = np.frombuffer(f.read(num_layers), dtype=np.int8)
-            alphas = np.frombuffer(f.read(num_layers * 2), dtype=np.float16)
-            self.input_size = sizes[0]
+            num_layers = np.frombuffer(f.read(1), dtype=np.uint8)[0]
+            prev_size = np.frombuffer(f.read(2), dtype=np.uint16)[0]
+            self.input_size = prev_size
             self.layers = []
-            for i in range(num_layers):
-                self.layers.append(Layer(
-                    sizes[i + 1],
-                    LayerType(types[i]),
-                    alphas[i] if alphas[i] != 0 else None
-                ))
+            for _ in range(num_layers):
+                size = np.frombuffer(f.read(2), dtype=np.uint16)[0]
+                alpha = np.frombuffer(f.read(2), dtype=np.float16)[0]
+                layer_type = np.frombuffer(f.read(1), dtype=np.uint8)[0]
+                weights = np.frombuffer(f.read(size * prev_size * 2), dtype=np.float16).reshape((size, prev_size))
+                biases = np.frombuffer(f.read(size * 2), dtype=np.float16)
 
-            prev_size = self.input_size
-            for layer in self.layers:
-                l_size = layer.size
-                weights = np.frombuffer(f.read(l_size * prev_size * 4), dtype=np.float32).reshape((l_size, prev_size))
-                biases = np.frombuffer(f.read(l_size * 4), dtype=np.float32)
-                layer.load(prev_size, weights, biases)
-                prev_size = layer.size
+                layer = Layer(
+                    LayerType(layer_type),
+                    size,
+                    alpha if alpha != -1 else None,
+                )
+                layer.load(prev_size, weights.copy(), biases.copy())
+                self.layers.append(layer)
+                prev_size = size
 
 
     def get_result(self, input):
@@ -84,15 +88,15 @@ class Network:
                 neurons.append(layer.forward(neurons[-1]))
 
             weight_change = learning_step * np.outer(
-                2 * (target - neurons[-1]) * self.layers[-1].activation_derivative(neurons[-1]),
+                (target - neurons[-1]) * 2 * self.layers[-1].activation_derivative(neurons[-1]),
                 neurons[-2]
             )
             new_weights[-1] += weight_change
-            prev_layer_cost = 2 * (target - neurons[-1]) * self.layers[-1].activation_derivative(neurons[-1]) 
+            prev_layer_cost = (target - neurons[-1]) * 2 * self.layers[-1].activation_derivative(neurons[-1]) 
             new_biases[-1] += prev_layer_cost * learning_step
 
             for i in range(len(self.layers) - 2, -1, -1):
-                current_cost = np.dot(prev_layer_cost, self.layers[i + 1].weights.T)
+                current_cost = np.dot(prev_layer_cost, self.layers[i + 1].weights)
                 weight_change = learning_step * np.outer(
                     current_cost * self.layers[i].activation_derivative(neurons[i + 1]),
                     neurons[i]
