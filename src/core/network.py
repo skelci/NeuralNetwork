@@ -65,12 +65,12 @@ class Network:
         return input
     
 
-    def get_cost(self, input, target):
-        if self.prev_result is None:
-            raise ValueError("No previous result found. Please call get_result() first.")
-        if target.shape != self.prev_result.shape:
-            raise ValueError(f"Invalid target shape: {target.shape}, expected: {self.prev_result.shape}")
-        return np.sum((self.get_result(input) - target) ** 2)
+    def get_cost(self, data):
+        cost = 0.0
+        for input, target in data:
+            output = self.get_result(input)
+            cost += np.sum(np.square(target - output))
+        return cost / len(data)
     
 
     def back_prop(self, data, learning_step=0.01):
@@ -78,14 +78,10 @@ class Network:
         new_biases = [np.zeros_like(layer.biases) for layer in self.layers]
 
         for input, target in data:
-            # print(f"Input: {input}, Target: {target}")
-
             neurons = [np.array(input, dtype=np.float16)]
 
             for layer in self.layers:
                 neurons.append(layer.forward(neurons[-1]))
-
-            # print(f"Neurons: {neurons}")
 
             weight_change = learning_step * np.outer(
                 2 * (target - neurons[-1]) * self.layers[-1].activation_derivative(neurons[-1]),
@@ -95,12 +91,8 @@ class Network:
             prev_layer_cost = 2 * (target - neurons[-1]) * self.layers[-1].activation_derivative(neurons[-1]) 
             new_biases[-1] += prev_layer_cost * learning_step
 
-            # print(f"activation_derivative: {self.layers[-1].activation_derivative(neurons[-1])}\nOutput cost: {2 * (target - neurons[-1])}")
-            # print(f"Weight change: {weight_change}\nBias change: {new_biases[-1]}\n")
-
             for i in range(len(self.layers) - 2, -1, -1):
-                print(f"Layer {i} cost: {prev_layer_cost}")
-                current_cost = np.dot(self.layers[i + 1].weights.T, prev_layer_cost)
+                current_cost = np.dot(prev_layer_cost, self.layers[i + 1].weights.T)
                 weight_change = learning_step * np.outer(
                     current_cost * self.layers[i].activation_derivative(neurons[i + 1]),
                     neurons[i]

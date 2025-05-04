@@ -10,7 +10,7 @@ class LayerType(IntEnum):
     ELU = 3
     Tanh = 4
     BinaryStep = 5
-    Raw = 6
+    Linear = 6
 
 
 
@@ -20,25 +20,36 @@ class Layer:
         self.type = type
         self.alpha = alpha
 
+        # numerically stable sigmoid
+        def sigmoid(z):
+            return 0.5 * (1.0 + np.tanh(0.5 * z))
+
         self.activation_function = {
-            LayerType.Sigmoid:      lambda x: 0.5 * (1.0 + np.tanh(x * 0.5)),
-            LayerType.ReLU:         lambda x: np.maximum(0, x),
-            LayerType.LeakyReLU:    lambda x, alpha=0.01: np.where(x > 0, x, alpha * x),
-            LayerType.ELU:          lambda x, alpha=1.0: np.where(x > 0, x, alpha * (np.exp(x) - 1)),
-            LayerType.Tanh:         lambda x: np.tanh(x),
-            LayerType.BinaryStep:   lambda x: np.where(x >= 0, 1, 0),
-            LayerType.Raw:          lambda x: x
+            LayerType.Sigmoid:   sigmoid,
+            LayerType.ReLU:      lambda z: np.maximum(0, z),
+            LayerType.LeakyReLU: lambda z, alpha=0.01: np.where(z > 0, z, alpha * z),
+            LayerType.ELU:       lambda z, alpha=1.0: np.where(z > 0, z, alpha * (np.exp(z) - 1)),
+            LayerType.Tanh:      lambda z: np.tanh(z),
+            LayerType.BinaryStep:lambda z: np.where(z >= 0, 1, 0),
+            LayerType.Linear:       lambda z: z
         }[type]
 
         self.activation_derivative = {
-            LayerType.Sigmoid:      lambda x: x * (1 - x),
-            LayerType.ReLU:         lambda x: np.where(x > 0, 1, 0),
-            LayerType.LeakyReLU:    lambda x, alpha=0.01: np.where(x > 0, 1, alpha),
-            LayerType.ELU:          lambda x, alpha=1.0: np.where(x > 0, 1, alpha * np.exp(x)),
-            LayerType.Tanh:         lambda x: 1 - np.square(x),
-            LayerType.BinaryStep:   lambda x: np.zeros_like(x),
-            LayerType.Raw:          lambda x: np.ones_like(x)
+            LayerType.Sigmoid:   lambda z: sigmoid(z) * (1 - sigmoid(z)),
+            LayerType.ReLU:      lambda z: np.where(z > 0, 1, 0),
+            LayerType.LeakyReLU: lambda z, alpha=0.01: np.where(z > 0, 1, alpha),
+            LayerType.ELU:       lambda z, alpha=1.0: np.where(z > 0, 1, alpha * np.exp(z)),
+            LayerType.Tanh:      lambda z: 1 - np.tanh(z)**2,
+            LayerType.BinaryStep:lambda z: np.zeros_like(z),
+            LayerType.Linear:       lambda z: np.ones_like(z)
         }[type]
+
+
+    def get_activation_derivative(self):
+        if self.alpha is None:
+            return self.activation_derivative(self.last_z)
+        else:
+            return self.activation_derivative(self.last_z, self.alpha)
 
 
     def load(self, input_size, weights=None, biases=None):
@@ -62,7 +73,11 @@ class Layer:
     def forward(self, input):
         if input.shape != (self.input_size,):
             raise ValueError(f"Invalid input shape: {input.shape}, expected: {(self.input_size,)}")
-        step_1 = np.dot(self.weights, input) + self.biases
-        step_2 = self.activation_function(step_1) if self.alpha is None else self.activation_function(step_1, self.alpha)
-        return step_2
+        z = np.dot(self.weights, input) + self.biases
+        self.last_z = z
+        a = (self.activation_function(z)
+            if self.alpha is None
+            else self.activation_function(z, self.alpha)
+        )
+        return a
 
