@@ -1,5 +1,6 @@
-from core.layer import *
-from core.network import *
+from neural_network.layer import *
+from neural_network.network import *
+from tokenizer import Tokenizer
 
 
 def train(nn, epochs, learning_step=0.01):
@@ -20,8 +21,17 @@ def train(nn, epochs, learning_step=0.01):
     print()
 
 
+def build_vocab(tokenizer):
+    with open("data/text.txt", "r", encoding="utf-8") as f:
+        text = f.read()
+
+    tokenizer.build_vocab(text)
+    tokenizer.save("data/vocab.txt")
+
+
 def main():
     nn = Network()
+    tokenizer = Tokenizer()
 
     while True:
         cmd = input("> ")
@@ -53,6 +63,10 @@ def main():
 
             case "l":
                 nn.load("models/test.nn")
+                tokenizer.load("data/vocab.txt")
+
+            case "v":
+                build_vocab(tokenizer)
 
             case _:
                 try:
